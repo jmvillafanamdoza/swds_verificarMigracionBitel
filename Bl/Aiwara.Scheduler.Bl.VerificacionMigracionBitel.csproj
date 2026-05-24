@@ -1,0 +1,16 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <PropertyGroup>
+    <TargetFramework>net8.0</TargetFramework>
+    <Nullable>enable</Nullable>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <AssemblyName>Aiwara.Scheduler.Bl.VerificacionMigracionBitel</AssemblyName>
+    <RootNamespace>Aiwara.Scheduler.Bl.VerificacionMigracionBitel</RootNamespace>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <ProjectReference Include="..\Be\Aiwara.Scheduler.Be.VerificacionMigracionBitel.csproj" />
+    <ProjectReference Include="..\Da\Aiwara.Scheduler.Da.VerificacionMigracionBitel.csproj" />
+  </ItemGroup>
+
+</Project>

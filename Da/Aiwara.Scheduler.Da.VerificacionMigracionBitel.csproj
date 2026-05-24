@@ -1,0 +1,20 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <PropertyGroup>
+    <TargetFramework>net8.0</TargetFramework>
+    <Nullable>enable</Nullable>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <AssemblyName>Aiwara.Scheduler.Da.VerificacionMigracionBitel</AssemblyName>
+    <RootNamespace>Aiwara.Scheduler.Da.VerificacionMigracionBitel</RootNamespace>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <PackageReference Include="Dapper" Version="2.1.35" />
+    <PackageReference Include="MySql.Data" Version="9.3.0" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <ProjectReference Include="..\Be\Aiwara.Scheduler.Be.VerificacionMigracionBitel.csproj" />
+  </ItemGroup>
+
+</Project>

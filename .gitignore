@@ -1,0 +1,29 @@
+## Visual Studio
+.vs/
+[Bb]in/
+[Obj]/
+*.user
+*.userosscache
+*.sln.docstates
+
+## .NET Core
+project.lock.json
+project.fragment.lock.json
+artifacts/
+## Herramientas de publicación y Rider/VS Code
+.vscode/
+.idea/
+*.suo
+*.user
+*.userosscache
+*.sln.docstates
+
+## Carpeta de paquetes de NuGet
+packages/
+!packages/build/
+*.nupkg
+
+## SQL Server (Archivos de base de datos locales que genera VS)
+*.mdf
+*.ldf
+*.ndf
