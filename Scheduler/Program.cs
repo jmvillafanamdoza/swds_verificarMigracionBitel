@@ -1,10 +1,10 @@
 using Aiwara.Scheduler.VerificacionMigracionBitel.Jobs;
+using Aiwara.Scheduler.VerificacionMigracionBitel.Services;
 using Quartz;
 using Serilog;
-using Data  = Aiwara.Scheduler.Da.VerificacionMigracionBitel;
+using Data = Aiwara.Scheduler.Da.VerificacionMigracionBitel;
 using Logic = Aiwara.Scheduler.Bl.VerificacionMigracionBitel;
 
-// ── Serilog: logger de archivo rotativo ──────────────────────────────────────
 Log.Logger = new LoggerConfiguration()
     .MinimumLevel.Information()
     .WriteTo.Console()
@@ -20,22 +20,24 @@ try
 
     var builder = Host.CreateApplicationBuilder(args);
 
-    // ── Serilog como proveedor de logs ────────────────────────────────────────
     builder.Logging.ClearProviders();
     builder.Logging.AddSerilog();
 
-    // ── Windows Service ───────────────────────────────────────────────────────
     builder.Services.AddWindowsService(options =>
     {
         options.ServiceName = "SWDS-VERIFICACION-MIGRACION-BITEL";
     });
 
-    // ── Inyección de dependencias ─────────────────────────────────────────────
+    // ── Inyección de dependencias ─────────────────────────────────────────
     builder.Services.AddSingleton<Data.ConnectionFactory>();
     builder.Services.AddScoped<Data.IRepository, Data.Repository>();
     builder.Services.AddScoped<Logic.ICore, Logic.Core>();
 
-    // ── Quartz Scheduler ──────────────────────────────────────────────────────
+    // BitelPortalService como Transient — cada vez que se pide se crea uno nuevo
+    // igual que en el otro bot con GetRequiredService<BitelPortalService>()
+    builder.Services.AddTransient<BitelPortalService>();
+
+    // ── Quartz Scheduler ──────────────────────────────────────────────────
     builder.Services.AddQuartz(q =>
     {
         var jobKey = new JobKey("verificacion_migracion_bitel_job", "group_verificacion_migracion_bitel");
@@ -44,12 +46,13 @@ try
             .WithIdentity(jobKey)
             .DisallowConcurrentExecution());
 
+        // Cada 30 minutos todos los días sin restricción de horario
         q.AddTrigger(opts => opts
             .ForJob(jobKey)
             .WithIdentity("verificacion_migracion_bitel_trigger", "group_verificacion_migracion_bitel")
             .StartNow()
             .WithSimpleSchedule(x => x
-                .WithIntervalInMinutes(240)   // ← Ajustar según necesidad
+                .WithIntervalInMinutes(30)
                 .RepeatForever()));
     });
 

@@ -1,0 +1,12 @@
+C:\swds_verificarMigracionBitel\Be\bin\Debug\net8.0\Aiwara.Scheduler.Be.VerificacionMigracionBitel.deps.json
+C:\swds_verificarMigracionBitel\Be\bin\Debug\net8.0\Aiwara.Scheduler.Be.VerificacionMigracionBitel.dll
+C:\swds_verificarMigracionBitel\Be\bin\Debug\net8.0\Aiwara.Scheduler.Be.VerificacionMigracionBitel.pdb
+C:\swds_verificarMigracionBitel\Be\obj\Debug\net8.0\Aiwara.Scheduler.Be.VerificacionMigracionBitel.GeneratedMSBuildEditorConfig.editorconfig
+C:\swds_verificarMigracionBitel\Be\obj\Debug\net8.0\Aiwara.Scheduler.Be.VerificacionMigracionBitel.AssemblyInfoInputs.cache
+C:\swds_verificarMigracionBitel\Be\obj\Debug\net8.0\Aiwara.Scheduler.Be.VerificacionMigracionBitel.AssemblyInfo.cs
+C:\swds_verificarMigracionBitel\Be\obj\Debug\net8.0\Aiwara.Scheduler.Be.VerificacionMigracionBitel.csproj.CoreCompileInputs.cache
+C:\swds_verificarMigracionBitel\Be\obj\Debug\net8.0\Aiwara.Scheduler.Be.VerificacionMigracionBitel.sourcelink.json
+C:\swds_verificarMigracionBitel\Be\obj\Debug\net8.0\Aiwara.Scheduler.Be.VerificacionMigracionBitel.dll
+C:\swds_verificarMigracionBitel\Be\obj\Debug\net8.0\refint\Aiwara.Scheduler.Be.VerificacionMigracionBitel.dll
+C:\swds_verificarMigracionBitel\Be\obj\Debug\net8.0\Aiwara.Scheduler.Be.VerificacionMigracionBitel.pdb
+C:\swds_verificarMigracionBitel\Be\obj\Debug\net8.0\ref\Aiwara.Scheduler.Be.VerificacionMigracionBitel.dll

@@ -1,0 +1,16 @@
+C:\swds_verificarMigracionBitel\Da\obj\Debug\net8.0\Aiwara.Scheduler.Da.VerificacionMigracionBitel.csproj.AssemblyReference.cache
+C:\swds_verificarMigracionBitel\Da\obj\Debug\net8.0\Aiwara.Scheduler.Da.VerificacionMigracionBitel.GeneratedMSBuildEditorConfig.editorconfig
+C:\swds_verificarMigracionBitel\Da\obj\Debug\net8.0\Aiwara.Scheduler.Da.VerificacionMigracionBitel.AssemblyInfoInputs.cache
+C:\swds_verificarMigracionBitel\Da\obj\Debug\net8.0\Aiwara.Scheduler.Da.VerificacionMigracionBitel.AssemblyInfo.cs
+C:\swds_verificarMigracionBitel\Da\obj\Debug\net8.0\Aiwara.Scheduler.Da.VerificacionMigracionBitel.csproj.CoreCompileInputs.cache
+C:\swds_verificarMigracionBitel\Da\obj\Debug\net8.0\Aiwara.Scheduler.Da.VerificacionMigracionBitel.sourcelink.json
+C:\swds_verificarMigracionBitel\Da\bin\Debug\net8.0\Aiwara.Scheduler.Da.VerificacionMigracionBitel.deps.json
+C:\swds_verificarMigracionBitel\Da\bin\Debug\net8.0\Aiwara.Scheduler.Da.VerificacionMigracionBitel.dll
+C:\swds_verificarMigracionBitel\Da\bin\Debug\net8.0\Aiwara.Scheduler.Da.VerificacionMigracionBitel.pdb
+C:\swds_verificarMigracionBitel\Da\bin\Debug\net8.0\Aiwara.Scheduler.Be.VerificacionMigracionBitel.dll
+C:\swds_verificarMigracionBitel\Da\bin\Debug\net8.0\Aiwara.Scheduler.Be.VerificacionMigracionBitel.pdb
+C:\swds_verificarMigracionBitel\Da\obj\Debug\net8.0\Aiwara.S.EE2745ED.Up2Date
+C:\swds_verificarMigracionBitel\Da\obj\Debug\net8.0\Aiwara.Scheduler.Da.VerificacionMigracionBitel.dll
+C:\swds_verificarMigracionBitel\Da\obj\Debug\net8.0\refint\Aiwara.Scheduler.Da.VerificacionMigracionBitel.dll
+C:\swds_verificarMigracionBitel\Da\obj\Debug\net8.0\Aiwara.Scheduler.Da.VerificacionMigracionBitel.pdb
+C:\swds_verificarMigracionBitel\Da\obj\Debug\net8.0\ref\Aiwara.Scheduler.Da.VerificacionMigracionBitel.dll

@@ -12,7 +12,7 @@ namespace Aiwara.Scheduler.Bl.VerificacionMigracionBitel
 
         #region Metodos Escritura
 
-        Task<bool> insertVerificacionLog(Entity.VerificacionMigracionLog log);
+        Task<bool> updMigracionObservadoAActivado(string celular, string accion);
 
         #endregion
     }

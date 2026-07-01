@@ -1,27 +1,25 @@
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.Logging;
 using Microsoft.Playwright;
-using Logic  = Aiwara.Scheduler.Bl.VerificacionMigracionBitel;
-using Entity = Aiwara.Scheduler.Be.VerificacionMigracionBitel;
+using Logic = Aiwara.Scheduler.Bl.VerificacionMigracionBitel;
 
 namespace Aiwara.Scheduler.VerificacionMigracionBitel.Services
 {
     public class BitelPortalService : IAsyncDisposable
     {
-        private readonly IConfiguration                    _configuration;
-        private readonly ILogger<BitelPortalService>       _logger;
-        private readonly Logic.ICore                       _core;
+        private readonly IConfiguration _configuration;
+        private readonly ILogger<BitelPortalService> _logger;
+        private readonly Logic.ICore _core;
 
         private IPlaywright? _playwright;
-        private IBrowser?    _browser;
-        private IPage?       _page;
+        private IBrowser? _browser;
+        private IBrowserContext? _context;
+        private IPage? _page;
+        private bool _isLoggedIn = false;
 
-        // ── Constantes ────────────────────────────────────────────────────────
-        private const string URL_LOGIN     = "http://cm.bitel.com.pe:8046/BCCS_CM/authenticateAction.do?className=AuthenticateDAO&methodName=actionLogin";
-        private const string URL_POSTPAGO  = "http://cm.bitel.com.pe:8046/BCCS_CM/manageSubscriber.do?_vt=7234e4aeaf6dc7688f046171250a3940";
+        private const string URL_LOGIN = "http://cm.bitel.com.pe:8046/BCCS_CM/authenticateAction.do?className=AuthenticateDAO&methodName=actionLogin";
         private const string TIENDA_ESPERADA = "VTPBC28";
         private const string ESTADO_ESPERADO = "Normal";
-        private const int    TIMEOUT_MS    = 30_000;
 
         public BitelPortalService(
             IConfiguration configuration,
@@ -29,78 +27,182 @@ namespace Aiwara.Scheduler.VerificacionMigracionBitel.Services
             Logic.ICore core)
         {
             _configuration = configuration;
-            _logger        = logger;
-            _core          = core;
-        }
-
-        // ── Helper: guardar log en BD ─────────────────────────────────────────
-        private async Task GuardarLogAsync(string celular, string estado, string paso, string mensaje)
-        {
-            var log = new Entity.VerificacionMigracionLog
-            {
-                celular       = celular,
-                estado        = estado,
-                paso          = paso,
-                mensaje       = mensaje,
-                fechaRegistro = DateTime.Now.ToString("yyyy-MM-dd HH:mm:ss")
-            };
-            await _core.insertVerificacionLog(log);
+            _logger = logger;
+            _core = core;
         }
 
         // ════════════════════════════════════════════════════════════════════════
-        // PASO 1 — Iniciar navegador y hacer Login
+        // EnsureLoggedInAsync
         // ════════════════════════════════════════════════════════════════════════
-        public async Task<bool> LoginAsync()
+        public async Task<bool> EnsureLoggedInAsync()
         {
-            _logger.LogInformation("PASO 1 — Iniciando navegador...");
+            const int MAX_REINTENTOS = 3;
+            const int ESPERA_SEGUNDOS = 1;
 
-            _playwright = await Playwright.CreateAsync();
-            _browser    = await _playwright.Chromium.LaunchAsync(new BrowserTypeLaunchOptions
+            if (_isLoggedIn && _page != null && !_page.IsClosed)
             {
-                Headless       = false,
-                ExecutablePath = _configuration["Playwright:ExecutablePath"]
-                                 ?? @"C:\Program Files\Google\Chrome\Application\chrome.exe"
-            });
+                _logger.LogInformation("Sesión activa. Reutilizando browser.");
+                return true;
+            }
 
-            var context = await _browser.NewContextAsync(new BrowserNewContextOptions
+            for (int intento = 1; intento <= MAX_REINTENTOS; intento++)
             {
-                ViewportSize = new ViewportSize { Width = 1366, Height = 768 }
-            });
+                _logger.LogInformation("Login intento {Intento}/{Max}...", intento, MAX_REINTENTOS);
 
-            _page = await context.NewPageAsync();
-            _page.SetDefaultTimeout(TIMEOUT_MS);
+                try
+                {
+                    if (_browser != null)
+                    {
+                        await _browser.CloseAsync();
+                        _browser = null;
+                        _page = null;
+                        _isLoggedIn = false;
+                        _playwright?.Dispose();
+                        _playwright = null;
+                    }
 
-            _logger.LogInformation("PASO 1 — Navegando a login: {Url}", URL_LOGIN);
-            await _page.GotoAsync(URL_LOGIN, new PageGotoOptions { WaitUntil = WaitUntilState.DOMContentLoaded });
+                    bool ok = await LoginAsync();
 
-            // Ingresar credenciales
-            var usuario  = _configuration["BitelCredentials:Username"] ?? string.Empty;
-            var password = _configuration["BitelCredentials:Password"]  ?? string.Empty;
+                    if (ok)
+                    {
+                        _logger.LogInformation("Login exitoso en intento {Intento}.", intento);
+                        return true;
+                    }
 
-            await _page.FillAsync("input[name='username'], input[name='userName'], input[name='userId']", usuario);
-            await _page.FillAsync("input[type='password']", password);
+                    _logger.LogWarning("Intento {Intento}/{Max} fallido. Reintentando en {Seg}s...",
+                        intento, MAX_REINTENTOS, ESPERA_SEGUNDOS);
+                }
+                catch (Exception ex)
+                {
+                    _logger.LogWarning(ex, "Excepción en intento {Intento}/{Max}: {Mensaje}",
+                        intento, MAX_REINTENTOS, ex.Message);
+                }
 
-            var btnLogin = _page.Locator("input[type='submit'], button[type='submit']");
-            await btnLogin.ClickAsync();
+                if (intento < MAX_REINTENTOS)
+                    await Task.Delay(TimeSpan.FromSeconds(ESPERA_SEGUNDOS));
+            }
 
-            // Esperar menú principal
+            _logger.LogError("Login fallido después de {Max} intentos.", MAX_REINTENTOS);
+            return false;
+        }
+
+        // ════════════════════════════════════════════════════════════════════════
+        // ForzarNuevoLoginAsync
+        // ════════════════════════════════════════════════════════════════════════
+        public async Task ForzarNuevoLoginAsync()
+        {
             try
             {
-                await _page.WaitForSelectorAsync("#module-menu, .x-toolbar", 
-                    new PageWaitForSelectorOptions { Timeout = TIMEOUT_MS });
+                if (_browser != null)
+                {
+                    await _browser.CloseAsync();
+                    _browser = null;
+                }
+                _playwright?.Dispose();
+                _playwright = null;
+                _page = null;
+                _isLoggedIn = false;
+                _logger.LogInformation("Browser cerrado. Listo para nuevo login.");
+            }
+            catch (Exception ex)
+            {
+                _logger.LogWarning("Error al forzar nuevo login: {Msg}", ex.Message);
+            }
+        }
 
-                _logger.LogInformation("PASO 1 — Login exitoso. URL: {Url}", _page.Url);
+        // ════════════════════════════════════════════════════════════════════════
+        // LoginAsync
+        // ════════════════════════════════════════════════════════════════════════
+        private async Task<bool> LoginAsync()
+        {
+            var usuario = _configuration["BitelCredentials:Username"] ?? string.Empty;
+            var password = _configuration["BitelCredentials:Password"] ?? string.Empty;
+
+            var chromePath = @"C:\Program Files\Google\Chrome\Application\chrome.exe";
+            if (!File.Exists(chromePath))
+                chromePath = @"C:\Program Files (x86)\Google\Chrome\Application\chrome.exe";
+
+            _playwright = await Playwright.CreateAsync();
+            _browser = await _playwright.Chromium.LaunchAsync(new BrowserTypeLaunchOptions
+            {
+                Headless = true,
+                ExecutablePath = chromePath,
+                Args = new[] { "--ignore-certificate-errors" }
+            });
+
+            _context = await _browser.NewContextAsync(new BrowserNewContextOptions
+            {
+                ViewportSize = new ViewportSize { Width = 1366, Height = 768 },
+                IgnoreHTTPSErrors = true,
+                AcceptDownloads = true
+            });
+
+            _page = await _context.NewPageAsync();
+
+            _logger.LogInformation("LoginAsync — Navegando a: {Url}", URL_LOGIN);
+            await _page.GotoAsync(URL_LOGIN, new PageGotoOptions
+            {
+                WaitUntil = WaitUntilState.NetworkIdle,
+                Timeout = 30_000
+            });
+
+            await _page.WaitForSelectorAsync(
+                "input[name='username'], input[name='userName'], input[name='userId']",
+                new PageWaitForSelectorOptions { State = WaitForSelectorState.Visible, Timeout = 15_000 });
+
+            await _page.ClickAsync("input[name='username'], input[name='userName'], input[name='userId']");
+            await _page.FillAsync("input[name='username'], input[name='userName'], input[name='userId']", "");
+            await _page.TypeAsync("input[name='username'], input[name='userName'], input[name='userId']",
+                usuario, new PageTypeOptions { Delay = 50 });
+
+            string valorUsuario = await _page.InputValueAsync(
+                "input[name='username'], input[name='userName'], input[name='userId']");
+            _logger.LogInformation("LoginAsync — Usuario ingresado: '{Val}'", valorUsuario);
+
+            await _page.ClickAsync("input[type='password']");
+            await _page.FillAsync("input[type='password']", "");
+            await _page.TypeAsync("input[type='password']", password, new PageTypeOptions { Delay = 50 });
+
+            await Task.Delay(1_000);
+
+            string valUser = await _page.InputValueAsync(
+                "input[name='username'], input[name='userName'], input[name='userId']");
+            string valPass = await _page.InputValueAsync("input[type='password']");
+
+            if (string.IsNullOrEmpty(valUser) || string.IsNullOrEmpty(valPass))
+            {
+                _logger.LogWarning("LoginAsync — Campos vacíos. user='{U}' pass='{P}'",
+                    valUser, string.IsNullOrEmpty(valPass) ? "VACIO" : "OK");
+                _isLoggedIn = false;
+                return false;
+            }
+
+            _logger.LogInformation("LoginAsync — Click submit...");
+            await _page.ClickAsync("input[type='submit'], button[type='submit']");
+
+            await _page.WaitForLoadStateAsync(LoadState.NetworkIdle,
+                new PageWaitForLoadStateOptions { Timeout = 30_000 });
+
+            try
+            {
+                await _page.WaitForSelectorAsync(
+                    "a[href*='logout'], a:has-text('Salir')",
+                    new PageWaitForSelectorOptions { State = WaitForSelectorState.Visible, Timeout = 15_000 });
+
+                _logger.LogInformation("LoginAsync — Login exitoso. Detectado enlace Salir.");
+                _isLoggedIn = true;
                 return true;
             }
             catch
             {
-                _logger.LogWarning("PASO 1 — Login fallido para usuario: {User}", usuario);
+                _logger.LogWarning("LoginAsync — No se detectó sesión activa.");
+                _isLoggedIn = false;
                 return false;
             }
         }
 
         // ════════════════════════════════════════════════════════════════════════
-        // VERIFICAR UN NÚMERO — flujo completo
+        // VerificarCelularAsync — navega por menú, no por URL directa
         // ════════════════════════════════════════════════════════════════════════
         public async Task<(bool exitoso, string mensaje)> VerificarCelularAsync(string celular)
         {
@@ -109,163 +211,192 @@ namespace Aiwara.Scheduler.VerificacionMigracionBitel.Services
 
             try
             {
-                // ── PASO 2: Ir a Cliente Móvil Postpago ──────────────────────────
-                _logger.LogInformation("[{Celular}] PASO 2 — Navegando a Cliente móvil postpago...", celular);
+                // ── PASO 2: Navegar por menú a Cliente Móvil Postpago ─────────────
+                // No usar URL directa con _vt= porque ese token expira
+                // Navegar via hover en "Gestión postpago" y click en "Cliente móvil postpago"
+                _logger.LogInformation("[{Celular}] PASO 2 — Navegando por menú a Cliente móvil postpago...", celular);
 
-                await _page.GotoAsync(URL_POSTPAGO, 
-                    new PageGotoOptions { WaitUntil = WaitUntilState.DOMContentLoaded, Timeout = TIMEOUT_MS });
+                // Cerrar cualquier menú abierto primero
+                await _page.Keyboard.PressAsync("Escape");
+                await Task.Delay(300);
 
-                await _page.WaitForSelectorAsync("fieldset", 
-                    new PageWaitForSelectorOptions { Timeout = TIMEOUT_MS });
+                // Click en "Gestión postpago"
+                _logger.LogInformation("[{Celular}] Navegando: Click en Gestión postpago...", celular);
+                await _page.ClickAsync("button.x-btn-text:has-text('Gestión postpago')");
+
+                // Esperar y hover en "Gestión de clientes postpago"
+                await _page.WaitForSelectorAsync(
+                    ".x-menu-item:has-text('Gestión de clientes postpago')",
+                    new PageWaitForSelectorOptions { State = WaitForSelectorState.Visible, Timeout = 10_000 });
+                _logger.LogInformation("[{Celular}] Navegando: Hover en Gestión de clientes postpago...", celular);
+                await _page.HoverAsync(".x-menu-item:has-text('Gestión de clientes postpago')");
+
+                // Esperar y click en "Cliente móvil postpago" con espera de navegación
+                await _page.WaitForSelectorAsync(
+                    ".x-menu-item:has-text('Cliente móvil postpago')",
+                    new PageWaitForSelectorOptions { State = WaitForSelectorState.Visible, Timeout = 10_000 });
+                _logger.LogInformation("[{Celular}] Navegando: Click en Cliente móvil postpago...", celular);
+                await _page.RunAndWaitForNavigationAsync(async () =>
+                {
+                    await _page.ClickAsync(".x-menu-item:has-text('Cliente móvil postpago')");
+                },
+                new PageRunAndWaitForNavigationOptions
+                {
+                    WaitUntil = WaitUntilState.NetworkIdle,
+                    Timeout = 30_000
+                });
+
+                _logger.LogInformation("[{Celular}] PASO 2 — Página postpago cargada. URL: {Url}",
+                    celular, _page.Url);
 
                 // ── PASO 3: Marcar checkboxes de tratamiento de datos ────────────
-                _logger.LogInformation("[{Celular}] PASO 3 — Verificando checkboxes de tratamiento de datos...", celular);
+                _logger.LogInformation("[{Celular}] PASO 3 — Verificando checkboxes...", celular);
 
                 var checkboxes = await _page.QuerySelectorAllAsync("input[name='term_checkbox']");
                 foreach (var chk in checkboxes)
                 {
-                    var checked_ = await chk.IsCheckedAsync();
-                    if (!checked_)
+                    if (!await chk.IsCheckedAsync())
                     {
                         await chk.ClickAsync();
-                        await _page.WaitForTimeoutAsync(300);
+                        await Task.Delay(400);
                     }
                 }
 
                 if (checkboxes.Count > 0)
                 {
-                    // Esperar que se habiliten los campos
                     await _page.WaitForFunctionAsync(
                         "() => { const el = document.getElementById('searchSubBean.isdn'); return el && !el.disabled; }",
                         null,
-                        new PageWaitForFunctionOptions { Timeout = 5_000 }
-                    ).ContinueWith(_ => { }); // ignorar timeout si no hay checkboxes
+                        new PageWaitForFunctionOptions { Timeout = 8_000 }
+                    ).ContinueWith(_ => { });
 
                     _logger.LogInformation("[{Celular}] PASO 3 — Checkboxes marcados OK.", celular);
                 }
 
+                await Task.Delay(500);
+
                 // ── PASO 4: Ingresar ISDN y buscar ──────────────────────────────
-                _logger.LogInformation("[{Celular}] PASO 4 — Ingresando número y buscando...", celular);
+                _logger.LogInformation("[{Celular}] PASO 4 — Ingresando número...", celular);
 
-                var campoIsdn = _page.Locator("#searchSubBean\\.isdn");
-                await campoIsdn.EvaluateAsync("el => el.removeAttribute('disabled')");
-                await campoIsdn.FillAsync(celular);
-
-                // Limpiar otros campos
-                foreach (var id in new[] { "searchSubBean\\.imsi", "searchSubBean\\.custId",
-                                           "searchSubBean\\.idNo", "searchSubBean\\.contractNo" })
+                var campoIsdn = await _page.QuerySelectorAsync("#searchSubBean\\.isdn");
+                if (campoIsdn != null)
                 {
-                    var campo = _page.Locator($"#{id}");
-                    if (await campo.CountAsync() > 0)
+                    await campoIsdn.EvaluateAsync("el => el.removeAttribute('disabled')");
+                    await campoIsdn.ClickAsync();
+                }
+
+                await _page.FillAsync("#searchSubBean\\.isdn", "");
+                await _page.TypeAsync("#searchSubBean\\.isdn", celular, new PageTypeOptions { Delay = 80 });
+
+                string valorIsdn = await _page.InputValueAsync("#searchSubBean\\.isdn");
+                _logger.LogInformation("[{Celular}] PASO 4 — ISDN ingresado: '{Val}'", celular, valorIsdn);
+
+                foreach (var id in new[] { "searchSubBean.imsi", "searchSubBean.custId",
+                                           "searchSubBean.idNo",  "searchSubBean.contractNo" })
+                {
+                    var campo = await _page.QuerySelectorAsync($"#{id}");
+                    if (campo != null)
                         await campo.EvaluateAsync("el => el.value = ''");
                 }
 
+                await Task.Delay(400);
                 await _page.ClickAsync("#myBtn");
 
-                // Esperar que aparezca la tabla de resultados
                 try
                 {
                     await _page.WaitForSelectorAsync("#lstRow tbody tr",
-                        new PageWaitForSelectorOptions { Timeout = TIMEOUT_MS });
+                        new PageWaitForSelectorOptions { Timeout = 30_000 });
                 }
                 catch
                 {
                     string mensajeError = "Número no encontrado en el sistema postpago";
                     _logger.LogWarning("[{Celular}] PASO 4 — {Msg}", celular, mensajeError);
-                    await GuardarLogAsync(celular, "E", "PASO_4_BUSCAR", mensajeError);
                     return (false, mensajeError);
                 }
 
-                // ── PASO 5: Click en el número para ver detalle ──────────────────
+                // ── PASO 5: Click en el número para cargar detalle ───────────────
                 _logger.LogInformation("[{Celular}] PASO 5 — Cargando detalle del suscriptor...", celular);
 
                 var linkSuscriptor = _page.Locator("#lstRow a").First;
                 if (await linkSuscriptor.CountAsync() == 0)
                 {
-                    string mensajeError = "No se encontró el link del suscriptor en la tabla de resultados";
+                    string mensajeError = "No se encontró el link del suscriptor en la tabla";
                     _logger.LogWarning("[{Celular}] PASO 5 — {Msg}", celular, mensajeError);
-                    await GuardarLogAsync(celular, "E", "PASO_5_DETALLE", mensajeError);
                     return (false, mensajeError);
                 }
 
                 await linkSuscriptor.ClickAsync();
 
-                // Esperar que cargue el detalle via AJAX (aparece mobileForm.status)
                 try
                 {
                     await _page.WaitForSelectorAsync("#mobileForm\\.status",
-                        new PageWaitForSelectorOptions { Timeout = TIMEOUT_MS });
+                        new PageWaitForSelectorOptions { Timeout = 30_000 });
                 }
                 catch
                 {
-                    string mensajeError = "El detalle del suscriptor no cargó (timeout esperando #mobileForm.status)";
+                    string mensajeError = "El detalle del suscriptor no cargó (timeout #mobileForm.status)";
                     _logger.LogWarning("[{Celular}] PASO 5 — {Msg}", celular, mensajeError);
-                    await GuardarLogAsync(celular, "E", "PASO_5_DETALLE", mensajeError);
                     return (false, mensajeError);
                 }
+
+                await Task.Delay(500);
 
                 // ── PASO 6: Verificar campos ─────────────────────────────────────
                 _logger.LogInformation("[{Celular}] PASO 6 — Verificando campos...", celular);
 
                 var estadoBloqueo = (await _page.InputValueAsync("#mobileForm\\.status")).Trim();
-                var fechaFirma    = (await _page.InputValueAsync("#mobileForm\\.effectDate")).Trim();
-                var codigoTienda  = (await _page.InputValueAsync("#mobileForm\\.shopCode")).Trim();
+                var fechaFirma = (await _page.InputValueAsync("#mobileForm\\.effectDate")).Trim();
+                var codigoTienda = (await _page.InputValueAsync("#mobileForm\\.shopCode")).Trim();
 
                 _logger.LogInformation("[{Celular}]   Estado bloqueo : {Val}", celular, estadoBloqueo);
                 _logger.LogInformation("[{Celular}]   Fecha firma    : {Val}", celular, fechaFirma);
                 _logger.LogInformation("[{Celular}]   Código tienda  : {Val}", celular, codigoTienda);
 
-                // ── Validación 1: Estado = Normal ────────────────────────────────
+                // Validación 1: Estado = Normal
                 if (estadoBloqueo != ESTADO_ESPERADO)
                 {
                     string mensajeError = $"Estado inesperado: '{estadoBloqueo}' (esperado: '{ESTADO_ESPERADO}')";
                     _logger.LogWarning("[{Celular}] PASO 6 — {Msg}", celular, mensajeError);
-                    await GuardarLogAsync(celular, "E", "PASO_6_VERIFICAR_ESTADO", mensajeError);
+                    await _core.updMigracionObservadoAActivado(celular, "RECHAZADO_ESTADO");
                     return (false, mensajeError);
                 }
 
-                // ── Validación 2: Fecha de firma con valor ────────────────────────
+                // Validación 2: Fecha de firma con valor
                 if (string.IsNullOrWhiteSpace(fechaFirma))
                 {
                     string mensajeError = "Fecha de firma vacía o sin valor";
                     _logger.LogWarning("[{Celular}] PASO 6 — {Msg}", celular, mensajeError);
-                    await GuardarLogAsync(celular, "E", "PASO_6_VERIFICAR_FECHA", mensajeError);
+                    await _core.updMigracionObservadoAActivado(celular, "NO_TIENE_FECHA");
                     return (false, mensajeError);
                 }
 
-                // ── Validación 3: Código de tienda ───────────────────────────────
+                // Validación 3: Código de tienda
                 if (codigoTienda != TIENDA_ESPERADA)
                 {
                     string mensajeOtraTienda = $"Migrado por otra tienda: '{codigoTienda}' (esperada: '{TIENDA_ESPERADA}')";
                     _logger.LogWarning("[{Celular}] PASO 6 — {Msg}", celular, mensajeOtraTienda);
-                    await GuardarLogAsync(celular, "T", "PASO_6_VERIFICAR_TIENDA", mensajeOtraTienda);
+                    await _core.updMigracionObservadoAActivado(celular, "OTRA_TIENDA");
                     return (false, mensajeOtraTienda);
                 }
 
-                // ── Todo OK ──────────────────────────────────────────────────────
-                string mensajeOk = $"Verificación exitosa - Estado: {estadoBloqueo}, Tienda: {codigoTienda}, Fecha: {fechaFirma}";
-                _logger.LogInformation("[{Celular}] PASO 6 — OK: {Msg}", celular, mensajeOk);
-                await GuardarLogAsync(celular, "S", "PASO_6_VERIFICACION_OK", mensajeOk);
-                return (true, mensajeOk);
+                // ── Todo OK: actualizar estado en BD ─────────────────────────────
+                _logger.LogInformation("[{Celular}] PASO 6 — Verificación OK. Actualizando BD...", celular);
+                await _core.updMigracionObservadoAActivado(celular, "OK");
+                _logger.LogInformation("[{Celular}] PASO 6 — BD actualizada: estado_venta = ACTIVADO", celular);
+
+                return (true, $"Verificación exitosa - Estado: {estadoBloqueo}, Tienda: {codigoTienda}, Fecha: {fechaFirma}");
             }
             catch (Exception ex) when (ex.Message.Contains("Target page, context or browser has been closed"))
             {
-                _logger.LogWarning("[{Celular}] Browser cerrado inesperadamente — contando +1 sin error BD.", celular);
+                _logger.LogWarning("[{Celular}] Browser cerrado inesperadamente.", celular);
                 return (false, "BROWSER_CLOSED");
             }
             catch (Exception ex)
             {
-                string mensajeError = $"Error inesperado: {ex.Message}";
                 _logger.LogError(ex, "[{Celular}] Error inesperado en VerificarCelularAsync", celular);
-
-                if (_page != null && !_page.IsClosed)
-                    await GuardarLogAsync(celular, "E", "PASO_ERROR_GENERAL", mensajeError);
-
-                return (false, mensajeError);
+                return (false, $"Error inesperado: {ex.Message}");
             }
         }
-
-        public IPage? GetPage() => _page;
 
         public async ValueTask DisposeAsync()
         {

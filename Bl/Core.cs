@@ -1,4 +1,4 @@
-using Data   = Aiwara.Scheduler.Da.VerificacionMigracionBitel;
+using Data = Aiwara.Scheduler.Da.VerificacionMigracionBitel;
 using Entity = Aiwara.Scheduler.Be.VerificacionMigracionBitel;
 
 namespace Aiwara.Scheduler.Bl.VerificacionMigracionBitel
@@ -23,9 +23,9 @@ namespace Aiwara.Scheduler.Bl.VerificacionMigracionBitel
 
         #region Metodos Escritura
 
-        public async Task<bool> insertVerificacionLog(Entity.VerificacionMigracionLog log)
+        public async Task<bool> updMigracionObservadoAActivado(string celular, string accion)
         {
-            return await _repository.insertVerificacionLog(log);
+            return await _repository.UpdMigracionObservadoAActivado(celular, accion);
         }
 
         #endregion

@@ -6,15 +6,13 @@ namespace Aiwara.Scheduler.Da.VerificacionMigracionBitel
     {
         #region Metodos Lectura
 
-        // TODO: Reemplazar con el SP real que retorna la lista de números a verificar
         Task<IEnumerable<Entity.VerificacionMigracion>> getListVerificaciones();
 
         #endregion
 
         #region Metodos Escritura
 
-        // TODO: Reemplazar con el SP real que actualiza el resultado de la verificación
-        Task<bool> insertVerificacionLog(Entity.VerificacionMigracionLog log);
+        Task<bool> UpdMigracionObservadoAActivado(string celular, string accion = "OK");
 
         #endregion
     }
